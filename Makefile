@@ -43,7 +43,6 @@ docker-build: build
 	docker build -t $(IMAGE_NAME) .
 
 /dev/loop%:
-	#fallocate -x --length 4G loop$*.img
 	dd if=/dev/zero of=loop$*.img bs=1G seek=4 count=0
 
 ifndef GITHUB_ACTIONS

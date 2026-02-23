@@ -9,6 +9,13 @@
   sleep 5
 }
 
+@test "Get lvminit pods" {
+  run kubectl -n lvminit get pod
+  echo "$output"
+  [ "$status" -eq 0 ]
+  sleep 5
+}
+
 @test "lvminit DaemonSet should roll out" {
   run kubectl --namespace lvminit rollout status ds/lvminit --timeout=120s
   [ "$status" -eq 0 ]
