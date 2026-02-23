@@ -71,7 +71,7 @@ kind:
 
 .PHONY: kind-load
 kind-load:
-	@kind --name lvminit-e2e load docker-image lvminit
+	@kind --name lvminit-e2e load docker-image $(IMAGE_NAME)
 
 .PHONY: rm-kind
 rm-kind:
