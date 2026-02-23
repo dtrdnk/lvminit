@@ -1,5 +1,5 @@
 APP_NAME := lvminit
-IMAGE_NAME := lvminit:latest
+IMAGE_NAME ?= lvminit:latest
 
 
 GOOS ?= linux
@@ -7,10 +7,6 @@ GOARCH ?= amd64
 GOARM ?=
 CGO_ENABLED ?= 0
 TAGS := -tags 'osusergo netgo static_build'
-
-PLATFORM := $(GOOS)/$(GOARCH)$(if $(GOARM),/v$(GOARM))
-BINARY_LVMPLUGIN := $(PLATFORM)/lvmplugin
-BINARY_CONTROLLER:= $(PLATFORM)/controller
 
 GO111MODULE := on
 KUBECONFIG := $(HOME)/.kube/config
@@ -33,14 +29,7 @@ ifeq ($(GOOS),linux)
 endif
 endif
 
-LINKMODE := $(LINKMODE) \
-		 -X 'github.com/metal-stack/v.Version=$(VERSION)' \
-		 -X 'github.com/metal-stack/v.Revision=$(GITVERSION)' \
-		 -X 'github.com/metal-stack/v.GitSHA1=$(SHA)' \
-		 -X 'github.com/metal-stack/v.BuildDate=$(BUILDDATE)'
-
-
-.PHONY: all deps build docker-build 		e2e clean # docker-push
+.PHONY: all deps build docker-build e2e clean
 
 all: build
 
@@ -52,9 +41,6 @@ build: deps
 
 docker-build: build
 	docker build -t $(IMAGE_NAME) .
-
-#docker-push:
-#	docker push $(IMAGE_NAME)
 
 /dev/loop%:
 	#fallocate -x --length 4G loop$*.img

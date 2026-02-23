@@ -98,8 +98,8 @@ jobs:
 
       - name: Build Docker image with release tag
         run: |
-          docker build -t $IMAGE_NAME:${{ steps.version.outputs.next_tag }} .
-          docker build -t $IMAGE_NAME:latest .
+          make docker-build IMAGE_NAME=$IMAGE_NAME:${{ steps.version.outputs.next_tag }}
+          make docker-build IMAGE_NAME=$IMAGE_NAME:latest
 
       - name: Push Docker images
         run: |
@@ -135,4 +135,4 @@ jobs:
 
       - name: Clean test environment
         run: |
-          make test-cleanup
+          make clean
