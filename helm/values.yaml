@@ -1,6 +1,5 @@
-
 image:
-  repository: lvminit
+  repository: ghcr.io/dtrdnk/lvminit
   tag: latest
   pullPolicy: IfNotPresent
 

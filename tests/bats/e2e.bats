@@ -3,23 +3,14 @@
 @test "Deploy lvminit via helm chart" {
   run kubectl create namespace lvminit || true
   run helm upgrade --install --namespace lvminit lvminit /helm --wait --values values.yaml
-  run kubectl -n lvminit get pod
-  echo "$output"
-  [ "$status" -eq 0 ]
-  sleep 5
-}
-
-@test "Get lvminit pods" {
-  run kubectl -n lvminit get pod
-  echo "$output"
   [ "$status" -eq 0 ]
   sleep 5
 }
 
 @test "lvminit DaemonSet should roll out" {
-  run kubectl --namespace lvminit rollout status ds/lvminit --timeout=120s
+  run kubectl --namespace lvminit rollout status ds/lvminit --timeout=60s
+  echo "$output"
   [ "$status" -eq 0 ]
-  sleep 15
 }
 
 @test "LVM should see all loop PVs" {
