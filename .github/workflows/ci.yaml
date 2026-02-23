@@ -1,0 +1,138 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  HELM_CHART_PATH: ./helm
+  HELM_REPO: ghcr.io/${{ github.repository_owner }}/lvminit-helm
+
+jobs:
+
+  pr-build-e2e:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image with "latest" tag
+        run: |
+          docker build -t $IMAGE_NAME:latest .
+
+      - name: Start Kind cluster
+        uses: helm/kind-action@v1.9.0
+
+      - name: Run e2e tests
+        run: |
+          make e2e
+
+      - name: Clean test environment
+        run: |
+          make test-cleanup
+
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up git for tagging
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Fetch all tags
+        run: git fetch --tags
+
+      # Example: Compute next version (semver, bump patch). Adjust logic as needed!
+      - name: Compute next version
+        id: version
+        run: |
+          # Get last tag (assume tags are like v1.2.3)
+          last_tag=$(git tag --list 'v*' | sort -V | tail -n1)
+          echo "Last tag: $last_tag"
+          if [ -z "$last_tag" ]; then
+            next_tag="v0.1.0"
+          else
+            IFS=. read -r major minor patch <<<"${last_tag#v}"
+            patch=$((patch+1))
+            next_tag="v$major.$minor.$patch"
+          fi
+          echo "next_tag=$next_tag" >> $GITHUB_OUTPUT
+          echo "::notice ::Next release tag is $next_tag"
+
+      - name: Create and push new tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag ${{ steps.version.outputs.next_tag }}
+          git push origin ${{ steps.version.outputs.next_tag }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.next_tag }}
+          name: ${{ steps.version.outputs.next_tag }}
+          draft: false
+          prerelease: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image with release tag
+        run: |
+          docker build -t $IMAGE_NAME:${{ steps.version.outputs.next_tag }} .
+          docker build -t $IMAGE_NAME:latest .
+
+      - name: Push Docker images
+        run: |
+          docker push $IMAGE_NAME:${{ steps.version.outputs.next_tag }}
+          docker push $IMAGE_NAME:latest
+
+      - name: Set Helm chart version
+        run: |
+          sed -i "s/^version:.*/version: \"${{ steps.version.outputs.next_tag }}\"/" $HELM_CHART_PATH/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.next_tag }}\"/" $HELM_CHART_PATH/Chart.yaml
+
+      - name: Package Helm chart
+        run: |
+          helm package $HELM_CHART_PATH --destination charts-out
+
+      - name: Login to GHCR for Helm chart
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Helm chart to GHCR OCI registry
+        run: |
+          helm push charts-out/lvminit-${{ steps.version.outputs.next_tag }}.tgz oci://$HELM_REPO
+
+      - name: Start Kind cluster
+        uses: helm/kind-action@v1.9.0
+
+      - name: Run e2e tests
+        run: |
+          make e2e
+
+      - name: Clean test environment
+        run: |
+          make test-cleanup
