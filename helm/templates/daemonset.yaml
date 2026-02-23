@@ -1,0 +1,76 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "lvminit.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "lvminit.name" . }}
+    helm.sh/chart: {{ include "lvminit.chart" . }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "lvminit.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/lvminit-config: {{ .Values.config | toYaml | sha256sum }}
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "lvminit.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "lvminit.serviceAccountName" . }}
+      {{- end }}
+      containers:
+        - name: lvminit
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - /etc/lvminit/config.yaml
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- range $idx, $disk := .Values.hostDiskPaths }}
+            - name: host-disk-{{ $idx }}
+              mountPropagation: Bidirectional
+              mountPath: {{ $disk }}
+            {{- end }}
+            - name: lvminit-config
+              mountPath: /etc/lvminit/config.yaml
+              subPath: config.yaml
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        {{- range $idx, $disk := .Values.hostDiskPaths }}
+        - name: host-disk-{{ $idx }}
+          hostPath:
+            path: {{ $disk }}
+        {{- end }}
+        - name: lvminit-config
+          configMap:
+            name: {{ include "lvminit.fullname" . }}-config
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
