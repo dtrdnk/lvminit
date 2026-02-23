@@ -11,6 +11,7 @@
   run kubectl --namespace lvminit rollout status ds/lvminit --timeout=60s
   echo "$output"
   [ "$status" -eq 0 ]
+  sleep 10
 }
 
 @test "LVM should see all loop PVs" {
