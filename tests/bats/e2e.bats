@@ -3,6 +3,8 @@
 @test "Deploy lvminit via helm chart" {
   run kubectl create namespace lvminit || true
   run helm upgrade --install --namespace lvminit lvminit /helm --wait --values values.yaml
+  run kubectl -n lvminit get pod
+  echo "$output"
   [ "$status" -eq 0 ]
   sleep 5
 }
