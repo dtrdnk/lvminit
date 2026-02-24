@@ -16,7 +16,7 @@ GITVERSION := $(shell git describe --long --all)
 # gnu date format iso-8601 is parsable with Go RFC3339
 BUILDDATE := $(shell date --iso-8601=seconds)
 VERSION := $(or ${VERSION},$(shell git describe --tags --exact-match 2> /dev/null || git symbolic-ref -q --short HEAD || git rev-parse --short HEAD))
-
+DISK_PATHS := $(shell yq '.config.volumeGroups[0].devices[]' tests/values.yaml)
 ifeq ($(CI),true)
   DOCKER_TTY_ARG=
 else
@@ -80,6 +80,7 @@ rm-kind:
 e2e: docker-build /dev/loop100 /dev/loop101 kind kind-load
 	@cd tests && docker build -t csi-bats . && cd -
 	docker run -i$(DOCKER_TTY_ARG) \
+		-e "DISK_PATHS=$(DISK_PATHS)" \
 		-v "$(KUBECONFIG):/root/.kube/config" \
 		-v "$(PWD)/tests:/code" \
 		-v "$(PWD)/helm:/helm" \

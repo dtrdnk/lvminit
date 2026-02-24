@@ -20,6 +20,7 @@
   [ "$status" -eq 0 ]
   echo "LVM Physical Volumes detected:"
   echo "$output"
+  if [ -z "${DISK_PATHS}" ];then { echo "DISK_PATHS is empty" ; exit 1; } fi
   # Check all disks are present as PVs
   for disk in $DISK_PATHS; do
     echo "$output" | grep "$disk"
