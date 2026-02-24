@@ -122,6 +122,13 @@ jobs:
           cp $HELM_PACKAGE_OUTPUT/*.tgz gh-pages/
           cp $HELM_PACKAGE_OUTPUT/index.yaml gh-pages/
 
+      # --- Find Helm chart tgz asset
+      - name: Find Helm chart for release asset
+        id: chart_file
+        run: |
+          chart=$(ls $HELM_PACKAGE_OUTPUT/lvminit-*.tgz | head -n1)
+          echo "CHART_FILE=${chart}" >> $GITHUB_OUTPUT
+
       # --- Kind Setup and e2e before publishing ---
       - name: Start Kind cluster
         uses: helm/kind-action@v1.14.0
@@ -140,7 +147,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: gh-pages
+          publish_dir: /
           publish_branch: gh-pages
           keep_files: true
           force_orphan: false
@@ -151,10 +158,40 @@ jobs:
           git tag ${{ steps.tag.outputs.next_tag }}
           git push origin ${{ steps.tag.outputs.next_tag }}
 
+      # --- Compose release notes with Docker/Helm usage ---
+      - name: Set release body
+        id: set_release_body
+        run: |
+          cat << EOF > release_body.md
+  ## Usage
+
+  ### Docker image
+  Pull the image:
+  \`\`\`sh
+  docker pull ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.next_tag }}
+  \`\`\`
+
+  ### Helm install
+
+  Add the Helm repo:
+  \`\`\`sh
+  helm repo add lvminit https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+  helm repo update
+  helm install lvminit lvminit/lvminit --version ${{ steps.tag.outputs.next_tag }}
+  \`\`\`
+
+  [See all releases and assets here.](https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.next_tag }})
+  EOF
+
+  # --- Create GitHub Release and upload assets ---
+
       - name: Create GitHub Release from tag
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.next_tag }}
           name: ${{ steps.tag.outputs.next_tag }}
+          body_path: release_body.md
           draft: false
           prerelease: false
+          files: |
+            ${{ steps.chart_file.outputs.CHART_FILE }}
