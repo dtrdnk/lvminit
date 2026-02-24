@@ -8,8 +8,8 @@ on:
 
 env:
   DOCKER_IMAGE: ghcr.io/${{ github.repository }}
-  HELM_CHART_PATH: ./helm
-  HELM_PACKAGE_OUTPUT: ./charts-out
+  CHART_NAME: lvminit           # If your chart has a different name, change this
+  CHART_DIR: helm               # Folder where Chart.yaml is (change if not 'helm')
 
 jobs:
   pr-build-e2e:
@@ -44,38 +44,42 @@ jobs:
     permissions:
       contents: write
       packages: write
-      pages: write
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Set up git for tagging
+      - name: Set up git
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      - name: Fetch tags
-        run: git fetch --tags
-
-      # --- Calculate NEXT release tag (semver patch bump, feel free to adjust!) ---
       - name: Calculate next tag
-        id: tag
+        id: version
         run: |
-          last_tag=$(git tag --list | sort -V | tail -n1)
+          last_tag=$(git tag --list --sort=-v:refname | head -n1 | sed 's/^v//')
           if [ -z "$last_tag" ]; then
             next_tag="0.1.0"
           else
-            IFS=. read -r major minor patch <<<"${last_tag}"
+            IFS=. read -r major minor patch <<<"$last_tag"
             patch=$((patch+1))
             next_tag="$major.$minor.$patch"
           fi
-          echo "next_tag=$next_tag" >> $GITHUB_OUTPUT
+          echo "NEXT_TAG=$next_tag" >> $GITHUB_OUTPUT
+          echo "last_tag=$last_tag"  >> $GITHUB_OUTPUT
 
-      # --- Docker build and push ---
+      # Bump Chart.yaml version for packaging (no commit/push needed)
+      - name: Update Chart.yaml version to match tag
+        run: |
+          sed -i "s/^version:.*/version: \"${{ steps.version.outputs.NEXT_TAG }}\"/" $CHART_DIR/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.NEXT_TAG }}\"/" $CHART_DIR/Chart.yaml
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image with release tag
-        run: make docker-build IMAGE_NAME=$DOCKER_IMAGE:${{ steps.tag.outputs.next_tag }}
+      - name: Build Docker image with new tag
+        run: make docker-build IMAGE_NAME=$DOCKER_IMAGE:${{ steps.version.outputs.NEXT_TAG }}
 
       - name: Build Docker image with latest tag
         run: make docker-build IMAGE_NAME=$DOCKER_IMAGE:latest
@@ -89,109 +93,83 @@ jobs:
 
       - name: Push Docker images
         run: |
-          docker push $DOCKER_IMAGE:${{ steps.tag.outputs.next_tag }}
+          docker push $DOCKER_IMAGE:${{ steps.version.outputs.NEXT_TAG }}
           docker push $DOCKER_IMAGE:latest
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
-      # --- Helm package and version bump ---
-      - name: Bump Helm chart version
-        run: |
-          sed -i "s/^version:.*/version: \"${{ steps.tag.outputs.next_tag }}\"/" $HELM_CHART_PATH/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.tag.outputs.next_tag }}\"/" $HELM_CHART_PATH/Chart.yaml
-
-      - name: Package Helm chart
-        run: |
-          mkdir -p $HELM_PACKAGE_OUTPUT
-          helm package $HELM_CHART_PATH --destination $HELM_PACKAGE_OUTPUT
-
-      # --- Prepare Helm chart repo (merge or create index.yaml in gh-pages) ---
-      - name: Checkout gh-pages branch for repo index
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          path: gh-pages
-
-      - name: Prepare new chart index
-        run: |
-          mkdir -p gh-pages
-          helm repo index $HELM_PACKAGE_OUTPUT \
-            --url ./ \
-            --merge gh-pages/index.yaml
-          cp $HELM_PACKAGE_OUTPUT/*.tgz gh-pages/
-          cp $HELM_PACKAGE_OUTPUT/index.yaml gh-pages/
-
-      # --- Find Helm chart tgz asset
-      - name: Find Helm chart for release asset
-        id: chart_file
-        run: |
-          chart=$(ls $HELM_PACKAGE_OUTPUT/lvminit-*.tgz | head -n1)
-          echo "CHART_FILE=${chart}" >> $GITHUB_OUTPUT
-
-      # --- Kind Setup and e2e before publishing ---
       - name: Start Kind cluster
         uses: helm/kind-action@v1.14.0
         with:
           install_only: true
 
-      - name: Run e2e tests (install chart directly from .tgz)
-        run: |
-          make e2e
+      - name: Run e2e tests (new version)
+        run: make e2e
 
       - name: Clean test environment
-        run: make test-cleanup
+        run: make clean
 
-      # --- After successful e2e, publish Helm repo to gh-pages branch! ---
-      - name: Publish Helm chart repo to gh-pages branch
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: /
-          publish_branch: gh-pages
-          keep_files: true
-          force_orphan: false
-
-      # --- Tag and release ---
-      - name: Create and push git tag for release
+      - name: Create and push git tag
         run: |
-          git tag ${{ steps.tag.outputs.next_tag }}
-          git push origin ${{ steps.tag.outputs.next_tag }}
+          git tag ${{ steps.version.outputs.NEXT_TAG }}
+          git push origin ${{ steps.version.outputs.NEXT_TAG }}
 
-      # --- Compose release notes with Docker/Helm usage ---
-      - name: Set release body
-        id: set_release_body
-        run: |
-          cat << EOF > release_body.md
-  ## Usage
-
-  ### Docker image
-  Pull the image:
-  \`\`\`sh
-  docker pull ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.next_tag }}
-  \`\`\`
-
-  ### Helm install
-
-  Add the Helm repo:
-  \`\`\`sh
-  helm repo add lvminit https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-  helm repo update
-  helm install lvminit lvminit/lvminit --version ${{ steps.tag.outputs.next_tag }}
-  \`\`\`
-
-  [See all releases and assets here.](https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.next_tag }})
-  EOF
-
-  # --- Create GitHub Release and upload assets ---
-
-      - name: Create GitHub Release from tag
+      - name: Create GitHub Release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.next_tag }}
-          name: ${{ steps.tag.outputs.next_tag }}
-          body_path: release_body.md
+          tag_name: ${{ steps.version.outputs.NEXT_TAG }}
+          name: "Release ${{ steps.version.outputs.NEXT_TAG }}"
           draft: false
           prerelease: false
-          files: |
-            ${{ steps.chart_file.outputs.CHART_FILE }}
+
+      # Publish Helm chart to gh-pages via chart-releaser
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.6.0
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          charts_dir: ${{ env.CHART_DIR }}
+
+      - name: Update Release Notes with usage instructions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const version = '${{ steps.version.outputs.NEXT_TAG }}';
+            const dockerImage = 'ghcr.io/${{ github.repository }}:' + version;
+            const chartName = '${{ env.CHART_NAME }}';
+            const repoUrl = `https://${owner}.github.io/${repo}/`;
+            const helmChartVersion = version;
+            const body = [
+              '## Usage',
+              '',
+              '### Docker Image',
+              '',
+              '```sh',
+              `docker pull ${dockerImage}`,
+              '```',
+              '',
+              '### Helm Chart',
+              '',
+              'Add repo and install:',
+              '```sh',
+              `helm repo add lvminit ${repoUrl}`,
+              'helm repo update',
+              `helm install myrelease lvminit/${chartName} --version ${helmChartVersion}`,
+              '```',
+              '',
+              '[See all assets and index.yaml here.](' + `${repoUrl}index.yaml` + ')'
+            ].join('\n');
+            // Get release ID for the current tag
+            const releases = await github.rest.repos.listReleases({ owner, repo });
+            const release = releases.data.find(r => r.tag_name === version || r.tag_name === 'v'+version);
+            if (!release) throw new Error(`Release for tag ${version} not found`);
+            await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id: release.id,
+              body
+            });
