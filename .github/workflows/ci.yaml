@@ -132,7 +132,8 @@ jobs:
       - name: Run e2e tests (install chart directly from .tgz)
         run: |
           ls -l
-          ls -l ./gh-pages/
+          ls -l ./gh-pages
+          ls -l ./charts-out
           CHART_FILE=$(ls ./gh-pages/lvminit-*.tgz | sort -V | tail -n1)
           helm install lvminit $CHART_FILE
           make e2e
