@@ -21,9 +21,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image (latest)
-        run: |
-          docker build -t $DOCKER_IMAGE:latest .
+      - name: Build Docker image with latest tag
+        run: make docker-build IMAGE_NAME=$DOCKER_IMAGE:latest
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -37,7 +36,7 @@ jobs:
         run: make e2e
 
       - name: Clean test environment
-        run: make test-cleanup
+        run: make clean
 
   release:
     if: github.event_name == 'push'
@@ -61,13 +60,13 @@ jobs:
       - name: Calculate next tag
         id: tag
         run: |
-          last_tag=$(git tag --list 'v*' | sort -V | tail -n1)
+          last_tag=$(git tag --list | sort -V | tail -n1)
           if [ -z "$last_tag" ]; then
-            next_tag="v0.1.0"
+            next_tag="0.1.0"
           else
-            IFS=. read -r major minor patch <<<"${last_tag#v}"
+            IFS=. read -r major minor patch <<<"${last_tag}"
             patch=$((patch+1))
-            next_tag="v$major.$minor.$patch"
+            next_tag="$major.$minor.$patch"
           fi
           echo "next_tag=$next_tag" >> $GITHUB_OUTPUT
 
@@ -131,11 +130,6 @@ jobs:
 
       - name: Run e2e tests (install chart directly from .tgz)
         run: |
-          ls -l
-          ls -l ./gh-pages
-          ls -l ./charts-out
-          CHART_FILE=$(ls ./gh-pages/lvminit-*.tgz | sort -V | tail -n1)
-          helm install lvminit $CHART_FILE
           make e2e
 
       - name: Clean test environment

@@ -1,7 +1,7 @@
 name: lvminit
 version: 0.0.1
 description: Kubernetes LVM init app
-appVersion: v0.0.1
+appVersion: 0.0.1
 apiVersion: v1
 keywords:
   - storage
