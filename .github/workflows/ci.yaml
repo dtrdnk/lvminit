@@ -7,12 +7,11 @@ on:
     branches: [ master ]
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  DOCKER_IMAGE: ghcr.io/${{ github.repository }}
   HELM_CHART_PATH: ./helm
-  HELM_REPO: ghcr.io/${{ github.repository_owner }}/lvminit-helm
+  HELM_PACKAGE_OUTPUT: ./charts-out
 
 jobs:
-
   pr-build-e2e:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -22,20 +21,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image with "latest" tag
+      - name: Build Docker image (latest)
         run: |
-          docker build -t $IMAGE_NAME:latest .
+          docker build -t $DOCKER_IMAGE:latest .
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
 
       - name: Start Kind cluster
         uses: helm/kind-action@v1.14.0
+        with:
+          install_only: true
 
       - name: Run e2e tests
-        run: |
-          make e2e
+        run: make e2e
 
       - name: Clean test environment
-        run: |
-          make test-cleanup
+        run: make test-cleanup
 
   release:
     if: github.event_name == 'push'
@@ -43,6 +45,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      pages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -51,16 +54,14 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      - name: Fetch all tags
+      - name: Fetch tags
         run: git fetch --tags
 
-      # Example: Compute next version (semver, bump patch). Adjust logic as needed!
-      - name: Compute next version
-        id: version
+      # --- Calculate NEXT release tag (semver patch bump, feel free to adjust!) ---
+      - name: Calculate next tag
+        id: tag
         run: |
-          # Get last tag (assume tags are like v1.2.3)
           last_tag=$(git tag --list 'v*' | sort -V | tail -n1)
-          echo "Last tag: $last_tag"
           if [ -z "$last_tag" ]; then
             next_tag="v0.1.0"
           else
@@ -69,25 +70,16 @@ jobs:
             next_tag="v$major.$minor.$patch"
           fi
           echo "next_tag=$next_tag" >> $GITHUB_OUTPUT
-          echo "::notice ::Next release tag is $next_tag"
 
-      - name: Create and push new tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git tag ${{ steps.version.outputs.next_tag }}
-          git push origin ${{ steps.version.outputs.next_tag }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.next_tag }}
-          name: ${{ steps.version.outputs.next_tag }}
-          draft: false
-          prerelease: false
-
+      # --- Docker build and push ---
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image with release tag
+        run: make docker-build IMAGE_NAME=$DOCKER_IMAGE:${{ steps.tag.outputs.next_tag }}
+
+      - name: Build Docker image with latest tag
+        run: make docker-build IMAGE_NAME=$DOCKER_IMAGE:latest
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -96,45 +88,76 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker image with release tag
-        run: |
-          make docker-build IMAGE_NAME=$IMAGE_NAME:${{ steps.version.outputs.next_tag }}
-          make docker-build IMAGE_NAME=$IMAGE_NAME:latest
-
       - name: Push Docker images
         run: |
-          docker push $IMAGE_NAME:${{ steps.version.outputs.next_tag }}
-          docker push $IMAGE_NAME:latest
+          docker push $DOCKER_IMAGE:${{ steps.tag.outputs.next_tag }}
+          docker push $DOCKER_IMAGE:latest
 
-      - name: Set Helm chart version
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      # --- Helm package and version bump ---
+      - name: Bump Helm chart version
         run: |
-          sed -i "s/^version:.*/version: \"${{ steps.version.outputs.next_tag }}\"/" $HELM_CHART_PATH/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.next_tag }}\"/" $HELM_CHART_PATH/Chart.yaml
+          sed -i "s/^version:.*/version: \"${{ steps.tag.outputs.next_tag }}\"/" $HELM_CHART_PATH/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.tag.outputs.next_tag }}\"/" $HELM_CHART_PATH/Chart.yaml
 
       - name: Package Helm chart
         run: |
-          helm package $HELM_CHART_PATH --destination charts-out
+          mkdir -p $HELM_PACKAGE_OUTPUT
+          helm package $HELM_CHART_PATH --destination $HELM_PACKAGE_OUTPUT
 
-      - name: Login to GHCR for Helm chart
-        uses: docker/login-action@v3
+      # --- Prepare Helm chart repo (merge or create index.yaml in gh-pages) ---
+      - name: Checkout gh-pages branch for repo index
+        uses: actions/checkout@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          ref: gh-pages
+          path: gh-pages
 
-      - name: Publish Helm chart to GHCR OCI registry
+      - name: Prepare new chart index
         run: |
-          helm push charts-out/lvminit-${{ steps.version.outputs.next_tag }}.tgz oci://$HELM_REPO
+          mkdir -p gh-pages
+          helm repo index $HELM_PACKAGE_OUTPUT \
+            --url ./ \
+            --merge gh-pages/index.yaml
+          cp $HELM_PACKAGE_OUTPUT/*.tgz gh-pages/
+          cp $HELM_PACKAGE_OUTPUT/index.yaml gh-pages/
 
+      # --- Kind Setup and e2e before publishing ---
       - name: Start Kind cluster
         uses: helm/kind-action@v1.14.0
         with:
           install_only: true
 
-      - name: Run e2e tests
+      - name: Run e2e tests (install chart directly from .tgz)
         run: |
+          CHART_FILE=$(ls ./gh-pages/lvminit-*.tgz | sort -V | tail -n1)
+          helm install lvminit $CHART_FILE
           make e2e
 
       - name: Clean test environment
+        run: make test-cleanup
+
+      # --- After successful e2e, publish Helm repo to gh-pages branch! ---
+      - name: Publish Helm chart repo to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: gh-pages
+          publish_branch: gh-pages
+          keep_files: true
+          force_orphan: false
+
+      # --- Tag and release ---
+      - name: Create and push git tag for release
         run: |
-          make clean
+          git tag ${{ steps.tag.outputs.next_tag }}
+          git push origin ${{ steps.tag.outputs.next_tag }}
+
+      - name: Create GitHub Release from tag
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.next_tag }}
+          name: ${{ steps.tag.outputs.next_tag }}
+          draft: false
+          prerelease: false
