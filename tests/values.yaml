@@ -1,4 +1,6 @@
 ---
+image:
+  tag: latest
 config:
   volumeGroups:
     - name: vgdata1

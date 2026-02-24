@@ -32,7 +32,7 @@ spec:
       {{- end }}
       containers:
         - name: lvminit
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - /etc/lvminit/config.yaml

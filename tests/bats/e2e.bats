@@ -11,7 +11,7 @@
   run kubectl --namespace lvminit rollout status ds/lvminit --timeout=60s
   echo "$output"
   [ "$status" -eq 0 ]
-  sleep 10
+  sleep 15
 }
 
 @test "LVM should see all loop PVs" {
@@ -20,11 +20,15 @@
   [ "$status" -eq 0 ]
   echo "LVM Physical Volumes detected:"
   echo "$output"
-  if [ -z "${DISK_PATHS}" ];then { echo "DISK_PATHS is empty" ; exit 1; } fi
+
   # Check all disks are present as PVs
-  for disk in $DISK_PATHS; do
-    echo "$output" | grep "$disk"
-  done
+  if [ ! -z "${DISK_PATHS}" ];then
+    for disk in $DISK_PATHS; do
+      echo "$output" | grep "$disk"
+    done;
+  else
+    { echo "DISK_PATHS is empty" ; exit 1; }
+  fi
 }
 
 @test "LVM should have a volume group with all disks" {
