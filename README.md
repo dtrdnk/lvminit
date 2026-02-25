@@ -1,5 +1,6 @@
 # LVMInit
-
+#### This project was created to prepare disks for TopoLVM running in Talos Linux
+#### Inspired by [lvm-disk-watcher](https://github.com/trueforge-org/containerforge/tree/main/apps/lvm-disk-watcher) and [csi-driver-lvm](https://github.com/metal-stack/csi-driver-lvm)
 **lvminit** is an LVM initialization and automation tool designed for Kubernetes clusters, supporting creation and destruction of LVM volume groups on block devices (including loop devices for test/dev use). It can be run as a DaemonSet and is fully testable with Kind and Bats for E2E scenarios, including resizing and destruction of LVM groups.
 
 ---
