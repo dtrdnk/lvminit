@@ -4,8 +4,7 @@ kind: DaemonSet
 metadata:
   name: {{ include "lvminit.fullname" . }}
   labels:
-    app.kubernetes.io/name: {{ include "lvminit.name" . }}
-    helm.sh/chart: {{ include "lvminit.chart" . }}
+    {{- include "lvminit.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
