@@ -9,11 +9,6 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# Describe disks attached on workers nodes for LVM
-hostDiskPaths: []
-#  - /dev/sdb
-#  - /dev/sdc
-
 # Config for LVMInit application
 config:
   mode: create # destroy
