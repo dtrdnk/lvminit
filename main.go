@@ -75,6 +75,7 @@ func runLvmCmd(args ...string) error {
 		logError("LVM command failed", "args", args, "output", string(output), "error", err)
 		return fmt.Errorf("LVM cmd failed: %v, output: %s", err, string(output))
 	}
+	logInfo("LVM command succeeded", "args", args, "output", string(output))
 	return nil
 }
 
