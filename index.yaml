@@ -2,6 +2,22 @@ apiVersion: v1
 entries:
   lvminit:
   - apiVersion: v1
+    appVersion: 0.1.1
+    created: "2026-03-18T10:07:38.353360114Z"
+    description: Kubernetes LVM init app
+    digest: 6c0780073ee7f9024e1d0ec9cbe5583135d6b7a1e17440a3816d10d64cbc4fa2
+    keywords:
+    - storage
+    - block-storage
+    - volume
+    - lvm
+    name: lvminit
+    sources:
+    - https://github.com/dtrdnk/lvminit
+    urls:
+    - https://github.com/dtrdnk/lvminit/releases/download/0.1.1/lvminit-0.1.1.tgz
+    version: 0.1.1
+  - apiVersion: v1
     appVersion: 0.1.0
     created: "2026-02-25T13:15:08.109094197Z"
     description: Kubernetes LVM init app
@@ -17,4 +33,4 @@ entries:
     urls:
     - https://github.com/dtrdnk/lvminit/releases/download/0.1.0/lvminit-0.1.0.tgz
     version: 0.1.0
-generated: "2026-02-25T13:15:08.107682354Z"
+generated: "2026-03-18T10:07:38.352937563Z"
