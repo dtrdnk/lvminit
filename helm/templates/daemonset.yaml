@@ -40,6 +40,18 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
+            - name: lvm-backup
+              mountPath: /etc/lvm/backup
+              mountPropagation: Bidirectional
+            - name: lvm-cache
+              mountPath: /etc/lvm/cache
+              mountPropagation: Bidirectional
+            - name: lvm-archive
+              mountPath: /etc/lvm/archive
+              mountPropagation: Bidirectional
+            - name: lvm-lock
+              mountPath: /run/lock/lvm
+              mountPropagation: Bidirectional
             - name: lvminit-config
               mountPath: /etc/lvminit/config.yaml
               subPath: config.yaml
@@ -48,6 +60,22 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: lvm-backup
+          hostPath:
+            path: {{ .Values.hostWritePath }}/backup
+            type: DirectoryOrCreate
+        - name: lvm-cache
+          hostPath:
+            path: {{ .Values.hostWritePath }}/cache
+            type: DirectoryOrCreate
+        - name: lvm-archive
+          hostPath:
+            path: {{ .Values.hostWritePath }}/archive
+            type: DirectoryOrCreate
+        - name: lvm-lock
+          hostPath:
+            path: {{ .Values.hostWritePath }}/lock
+            type: DirectoryOrCreate
         - name: lvminit-config
           configMap:
             name: {{ include "lvminit.fullname" . }}-config

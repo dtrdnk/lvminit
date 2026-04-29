@@ -23,3 +23,5 @@
    make build
    # or
    GOOS=linux CGO_ENABLED=0 go build -o lvminit main.go
+
+### TODO: improve local e2e mounting loop devices

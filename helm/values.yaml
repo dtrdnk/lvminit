@@ -9,6 +9,9 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# By default, for Talos Linux writable dir is /var
+hostWritePath: /var/etc/lvm
+
 # Config for LVMInit application
 config:
   mode: create # destroy
