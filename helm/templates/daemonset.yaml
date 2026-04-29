@@ -40,8 +40,6 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: host-dev
-              mountPath: /dev
             - name: lvminit-config
               mountPath: /etc/lvminit/config.yaml
               subPath: config.yaml
@@ -50,9 +48,6 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
-        - name: host-dev
-          hostPath:
-            path: /dev
         - name: lvminit-config
           configMap:
             name: {{ include "lvminit.fullname" . }}-config

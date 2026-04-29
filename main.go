@@ -3,13 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
-	"io/ioutil"
 	"lvminit/pkg/lvm"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 type Config struct {
@@ -38,7 +38,10 @@ func logJSON(level string, msg string, kv ...interface{}) {
 		m[k] = kv[i+1]
 	}
 	b, _ := json.Marshal(m)
-	fmt.Fprintln(os.Stderr, string(b))
+	_, err := fmt.Fprintln(os.Stderr, string(b))
+	if err != nil {
+		logError("error", err)
+	}
 }
 
 func logInfo(msg string, kv ...interface{})  { logJSON("info", msg, kv...) }
@@ -50,8 +53,8 @@ func logFatal(msg string, kv ...interface{}) {
 }
 
 func scanBlockDevices() ([]string, error) {
-	devices := []string{}
-	paths, err := ioutil.ReadDir("/dev")
+	var devices []string
+	paths, err := os.ReadDir("/dev")
 	if err != nil {
 		logError("Failed to read /dev", "error", err)
 		return nil, err
@@ -110,23 +113,28 @@ func createAll(cfg *Config) {
 		var pvArgs []string
 		for _, pv := range vg.Devices {
 			logInfo("Ensuring PV", "device", pv)
-			err := runLvmCmd("pvcreate", "-ff", "-y", pv)
-			if err != nil {
-				if strings.Contains(fmt.Sprint(err), "is already a physical volume") {
-					logInfo("PV exists", "device", pv)
-				} else {
+
+			// Check if PV already exists before creating it
+			if lvm.PvExists(pv) {
+				logInfo("PV exists", "device", pv)
+			} else {
+				err := runLvmCmd("pvcreate", "-ff", "-y", pv)
+				if err != nil {
 					logFatal("pvcreate failed", "device", pv, "error", err)
 				}
 			}
 			pvArgs = append(pvArgs, pv)
 		}
+
 		logInfo("Ensuring VG", "vg", vg.Name)
-		args := append([]string{"vgcreate", vg.Name}, pvArgs...)
-		err := runLvmCmd(args...)
-		if err != nil {
-			if strings.Contains(fmt.Sprint(err), "already exists") {
-				logInfo("VG exists", "vg", vg.Name)
-			} else {
+
+		// Check if VG already exists before creating it
+		if lvm.VgExists(vg.Name) {
+			logInfo("VG exists", "vg", vg.Name)
+		} else {
+			args := append([]string{"vgcreate", vg.Name}, pvArgs...)
+			err := runLvmCmd(args...)
+			if err != nil {
 				logFatal("vgcreate failed", "vg", vg.Name, "error", err)
 			}
 		}
@@ -148,7 +156,10 @@ func destroyAll(cfg *Config) {
 				allGone = false
 				logInfo("Destroying VG", "vg", vg.Name)
 				// Remove all LVs (force)
-				runLvmCmd("lvremove", "-A", "n", "-f", vg.Name)
+				runLvRemove := runLvmCmd("lvremove", "-A", "n", "-f", vg.Name)
+				if runLvRemove != nil {
+					logWarn("Failed to remove VG", "vg", vg.Name, "error", runLvRemove)
+				}
 				// Now try VG remove
 				err := runLvmCmd("vgremove", "-f", vg.Name)
 				if err != nil {
@@ -194,7 +205,7 @@ func resizeAll(cfg *Config, lastSizes map[string]int64) map[string]int64 {
 }
 
 func flattenDevices(cfg *Config) []string {
-	devs := []string{}
+	var devs []string
 	for _, vg := range cfg.VolumeGroups {
 		for _, dev := range vg.Devices {
 			devs = append(devs, dev)
@@ -208,7 +219,7 @@ func main() {
 		logFatal("Usage: lvminit config.yaml")
 	}
 	cfgFile := os.Args[1]
-	data, err := ioutil.ReadFile(cfgFile)
+	data, err := os.ReadFile(cfgFile)
 	if err != nil {
 		logFatal("Failed to read config", "error", err)
 	}

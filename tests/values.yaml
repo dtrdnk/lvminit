@@ -7,7 +7,3 @@ config:
       devices:
         - /dev/loop100
         - /dev/loop101
-
-hostDiskPaths:
-  - /dev/loop100
-  - /dev/loop101
